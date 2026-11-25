@@ -1,0 +1,81 @@
+x-app: &app
+  build: .
+  image: opspilot-demo:local
+
+x-database-env: &database-env
+  POSTGRES_HOST: db
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: opspilot_demo
+  POSTGRES_USER: opspilot_demo
+  POSTGRES_PASSWORD: ${OPSPILOT_COMPOSE_POSTGRES_PASSWORD:-local-demo-db-password}
+
+services:
+  db:
+    image: postgres:17
+    environment: *database-env
+    ports:
+      - "127.0.0.1:${OPSPILOT_COMPOSE_DB_PORT:-5433}:5432"
+    volumes:
+      - demo_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "opspilot_demo", "-d", "opspilot_demo"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  api:
+    <<: *app
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    environment:
+      <<: *database-env
+      WEBHOOK_SECRET: ${OPSPILOT_COMPOSE_WEBHOOK_SECRET:-local-demo-inbound-key}
+      OPSPILOT_OPERATOR_TOKEN: ${OPSPILOT_OPERATOR_TOKEN:-}
+      OPSPILOT_OPENAI_API_KEY: ${OPSPILOT_OPENAI_API_KEY:-}
+      OPSPILOT_INVESTIGATION_MODEL: ${OPSPILOT_INVESTIGATION_MODEL:-}
+    ports:
+      - "127.0.0.1:${OPSPILOT_COMPOSE_API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/db-health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  mock-customer:
+    <<: *app
+    command: ["python", "-m", "uvicorn", "mock_customer.main:app", "--host", "0.0.0.0", "--port", "8001", "--no-access-log"]
+    environment:
+      MOCK_CUSTOMER_SIGNING_SECRET: ${OPSPILOT_COMPOSE_MOCK_SECRET:-local-demo-customer-key}
+    ports:
+      - "127.0.0.1:${OPSPILOT_COMPOSE_MOCK_PORT:-8001}:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8001/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "app.worker", "run", "--allow-loopback-http", "--register-mock"]
+    environment:
+      <<: *database-env
+      MOCK_CUSTOMER_SIGNING_SECRET: ${OPSPILOT_COMPOSE_MOCK_SECRET:-local-demo-customer-key}
+    # Keep the mock reachable on worker loopback without allowing arbitrary HTTP URLs.
+    network_mode: "service:mock-customer"
+    depends_on:
+      api:
+        condition: service_healthy
+      mock-customer:
+        condition: service_healthy
+        restart: true
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.worker", "check-db", "--require-mock"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  demo_postgres_data:

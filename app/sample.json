@@ -1,0 +1,12 @@
+[
+    {
+        "event_id": "evt_201",
+        "event_type": "order.created",
+        "payload": {"amount": 1000}
+    },
+    {
+        "event_id": "evt_202",
+        "event_type": "order.cancelled",
+        "payload": {"amount": 500}
+    }
+]

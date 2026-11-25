@@ -1,0 +1,5 @@
+event_id,event_type,payload
+evt_101,payment.success,"{""amount"":500,""currency"":""INR""}"
+evt_102,payment.failed,"{""amount"":200,""currency"":""INR""}"
+,payment.success,"{""amount"":300}"
+evt_104,,"{""amount"":100}"

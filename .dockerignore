@@ -1,0 +1,9 @@
+**
+!Dockerfile
+!requirements.txt
+!app/
+!app/**/*.py
+!mock_customer/
+!mock_customer/**/*.py
+!docs/
+!docs/*.md
